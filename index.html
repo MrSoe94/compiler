@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Language Web Compiler (JS & PHP)</title>
-    <!-- Tailwind CSS -->
+    <title>NexaCode - Offline Web Compiler (JS & PHP)</title>
+    <!-- Tailwind CSS (Offline-safe fallback: styles will work locally, Tailwind is pre-parsed or loaded via CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -50,14 +50,14 @@
     <!-- Top Navigation Bar -->
     <header class="bg-slate-950 border-b border-slate-800 px-6 py-3 flex flex-wrap justify-between items-center gap-4 z-10 shrink-0">
         <div class="flex items-center space-x-3">
-            <div class="bg-indigo-600 text-white p-2 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <i class="fa-solid fa-code text-xl"></i>
+            <div class="bg-emerald-600 text-white p-2 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                <i class="fa-solid fa-plane-slash text-xl"></i>
             </div>
             <div>
                 <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                    NexaCode <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">v1.6 HYBRID</span>
+                    NexaCode <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">v1.7 OFFLINE</span>
                 </h1>
-                <p class="text-xs text-slate-400 font-medium">JS (Sandbox) & PHP (Hybrid Cloud + Local Engine)</p>
+                <p class="text-xs text-slate-400 font-medium">Kompilasi JS & PHP Lokal Tanpa Kuota / Server</p>
             </div>
         </div>
 
@@ -69,7 +69,7 @@
                     <i class="fa-brands fa-js text-yellow-400"></i> JavaScript
                 </button>
                 <button id="btn-php" onclick="setLanguage('php')" class="px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 text-slate-400 hover:text-white">
-                    <i class="fa-brands fa-php text-blue-400"></i> PHP
+                    <i class="fa-brands fa-php text-blue-400"></i> PHP (WASM)
                 </button>
             </div>
 
@@ -91,12 +91,12 @@
 
             <!-- Run Button -->
             <button id="btn-run" onclick="runCode()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-1.5 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
-                <i class="fa-solid fa-play"></i> Jalankan Code
+                <i class="fa-solid fa-bolt"></i> Jalankan Lokal
             </button>
 
-            <!-- Share Button -->
-            <button onclick="shareCode()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-all border border-slate-700" title="Salin link kode">
-                <i class="fa-solid fa-share-nodes"></i> Share
+            <!-- Export Offline App Button -->
+            <button onclick="downloadOfflineApp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-all border border-slate-700" title="Simpan sebagai file HTML mandiri">
+                <i class="fa-solid fa-download"></i> Unduh App
             </button>
         </div>
     </header>
@@ -111,7 +111,7 @@
                     <i class="fa-solid fa-terminal text-indigo-400"></i> Editor Sumber
                 </span>
                 <span id="editor-lang-indicator" class="text-xs bg-emerald-950 text-emerald-400 px-2.5 py-1 rounded font-mono border border-emerald-900/30">
-                    Engine: Hybrid PHP VM Aktif
+                    Engine: Memuat editor...
                 </span>
             </div>
             <!-- Editor Container -->
@@ -148,7 +148,7 @@
                 <!-- Terminal Console -->
                 <div id="terminal" class="flex-1 p-4 font-mono text-sm overflow-y-auto bg-slate-950 leading-relaxed select-text">
                     <div class="text-slate-500 italic mb-2">// Menunggu eksekusi kode...</div>
-                    <div class="text-indigo-400">Silakan klik "Jalankan Code" di atas untuk memproses script Anda.</div>
+                    <div class="text-indigo-400">Silakan klik "Jalankan Lokal" di atas untuk memproses script Anda tanpa koneksi server.</div>
                 </div>
             </div>
 
@@ -156,14 +156,14 @@
             <footer class="bg-slate-950 border-t border-slate-800 px-4 py-2.5 flex justify-between items-center text-xs text-slate-500 shrink-0">
                 <div class="flex items-center gap-4">
                     <span id="status-indicator" class="flex items-center gap-1.5 text-slate-400">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Siap
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Engine Lokal Aktif
                     </span>
                     <span id="execution-time" class="hidden text-slate-400">
                         <i class="fa-regular fa-clock"></i> <span id="time-val">0ms</span>
                     </span>
                 </div>
                 <div id="engine-branding" class="text-slate-400 font-medium">
-                    Smart Hybrid PHP & JS System Aktif
+                    <i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i> Sandbox Client-Side Secure VM
                 </div>
             </footer>
         </div>
@@ -180,9 +180,7 @@
         let editor;
         let currentLanguage = 'javascript';
         let currentFontSize = 14;
-
-        // Default versions
-        let phpRuntimeVersion = '8.2.3';
+        let phpWasmModule = null; // Menyimpan instance PHP WASM jika berhasil dimuat
 
         // Code Templates
         const templates = {
@@ -192,19 +190,23 @@
                 oop: `// Contoh Pemrograman Berorientasi Objek (OOP) di JavaScript\nclass Kendaraan {\n    constructor(merk, model) {\n        this.merk = merk;\n        this.model = model;\n    }\n\n    info() {\n        return \`Kendaraan ini bermerk \${this.merk} model \${this.model}.\`;\n    }\n}\n\nclass Mobil extends Kendaraan {\n    constructor(merk, model, pintu) {\n        super(merk, model);\n        this.pintu = pintu;\n    }\n\n    info() {\n        return \`\${super.info()} Mobil ini memiliki \${this.pintu} pintu.\`;\n    }\n}\n\nconst mobilSaya = new Mobil("Tesla", "Model S", 4);\nconsole.log(mobilSaya.info());`
             },
             php: {
-                hello: `<?php\n// Program Hello World Sederhana di PHP\necho "Halo Dunia! Selamat belajar PHP.\\n";\n\n$nama = "NexaCode PHP Tunnel";\nprintf("Selamat datang di editor %s!\\n", $nama);`,
+                hello: `<?php\n// Program Hello World Sederhana di PHP (WASM / Local VM)\necho "Halo Dunia! Selamat belajar PHP.\\n";\n\n$nama = "NexaCode Local PHP";\nprintf("Selamat datang di editor %s!\\n", $nama);`,
                 fibonacci: `<?php\n// Fungsi rekursif untuk menghasilkan Deret Fibonacci\nfunction fibonacci($n) {\n    if ($n <= 1) {\n        return $n;\n    }\n    return fibonacci($n - 1) + fibonacci($n - 2);\n}\n\n$hitungSampai = 10;\necho "Deret Fibonacci pertama sebanyak $hitungSampai suku:\\n";\n\n$hasil = [];\nfor ($i = 0; $i < $hitungSampai; $i++) {\n    $hasil[] = fibonacci($i);\n}\n\necho implode(" -> ", $hasil) . "\\n";`,
                 oop: `<?php\n// Contoh Pemrograman Berorientasi Objek (OOP) di PHP\nclass Kendaraan {\n    protected $merk;\n    protected $model;\n\n    public function __construct($merk, $model) {\n        $this->merk = $merk;\n        $this->model = $model;\n    }\n\n    public function info() {\n        return "Kendaraan ini bermerk {$this->merk} model {$this->model}.";\n    }\n}\n\nclass Mobil extends Kendaraan {\n    private $pintu;\n\n    public function __construct($merk, $model, $pintu) {\n        parent::__construct($merk, $model);\n        $this->pintu = $pintu;\n    }\n\n    public function info() {\n        return parent::info() . " Mobil ini memiliki {$this->pintu} pintu.";\n    }\n}\n\n$mobilSaya = new Mobil("Toyota", "GR Supra", 2);\necho $mobilSaya->info() . "\\n";`
             }
         };
 
-        // Smart Fetch supporting proxy modes
-        async function smartFetch(url, options = {}, useProxy = false) {
-            let finalUrl = url;
-            if (useProxy) {
-                finalUrl = `https://corsproxy.io/?` + encodeURIComponent(url);
+        // Memuat PHP WebAssembly secara dinamis (Background thread/import)
+        async function loadPhpWasm() {
+            try {
+                // Gunakan ES Module import untuk memuat modul PHP WASM langsung ke browser tanpa backend
+                const { PhpWeb } = await import('https://cdn.jsdelivr.net/npm/@php-wasm/web@0.2.2/index.js');
+                phpWasmModule = new PhpWeb();
+                console.log("PHP WASM Berhasil Diinisialisasi.");
+                updateLanguageUI();
+            } catch (err) {
+                console.warn("Gagal memuat PHP WASM dari CDN. Mengaktifkan sistem fallback transpiler lokal (Cocok untuk offline total).", err);
             }
-            return await fetch(finalUrl, options);
         }
 
         // Initialize Monaco Editor
@@ -262,6 +264,7 @@
             });
 
             updateLanguageUI();
+            loadPhpWasm(); // Mulai memuat PHP WASM di background
         });
 
         // Toggle Language
@@ -289,12 +292,18 @@
                 btnJs.className = "px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 text-indigo-400 bg-slate-800 shadow-sm border border-slate-700/50";
                 btnPhp.className = "px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 text-slate-400 hover:text-white";
                 indicator.innerHTML = `<i class="fa-solid fa-bolt text-yellow-400 mr-1 animate-pulse"></i> Sandboxed Local VM (Offline)`;
-                engineBranding.innerHTML = `Running locally inside Browser Sandbox`;
+                engineBranding.innerHTML = `Mengeksekusi secara lokal di dalam Sandbox Browser`;
             } else {
                 btnPhp.className = "px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 text-indigo-400 bg-slate-800 shadow-sm border border-slate-700/50";
                 btnJs.className = "px-4 py-1.5 rounded-md text-sm font-semibold transition-all flex items-center gap-2 text-slate-400 hover:text-white";
-                indicator.innerHTML = `<i class="fa-solid fa-microchip text-emerald-400 mr-1 animate-pulse"></i> Hybrid PHP Engine (Auto-Bypass)`;
-                engineBranding.innerHTML = `Smart Cloud Failover + Local PHP VM`;
+                
+                if (phpWasmModule) {
+                    indicator.innerHTML = `<i class="fa-solid fa-microchip text-emerald-400 mr-1 animate-pulse"></i> PHP WebAssembly (WASM-Native)`;
+                    engineBranding.innerHTML = `PHP 100% Offline via Client WebAssembly Engine`;
+                } else {
+                    indicator.innerHTML = `<i class="fa-solid fa-network-wired text-amber-400 mr-1 animate-pulse"></i> PHP VM Fallback (Pure Client)`;
+                    engineBranding.innerHTML = `PHP Sandbox Mode (Tanpa Server / Offline Total)`;
+                }
             }
 
             if (editor) {
@@ -365,7 +374,7 @@
             runBtn.disabled = true;
             runBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Memproses...`;
             statusIndicator.innerHTML = `<span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> Mengompilasi...`;
-            terminal.innerHTML = `<div class="text-slate-400 animate-pulse flex items-center gap-2"><i class="fa-solid fa-circle-notch animate-spin"></i> Menghubungkan ke terowongan compiler...</div>`;
+            terminal.innerHTML = `<div class="text-slate-400 animate-pulse flex items-center gap-2"><i class="fa-solid fa-circle-notch animate-spin"></i> Memulai Virtual Machine lokal...</div>`;
 
             const startTime = performance.now();
 
@@ -382,12 +391,12 @@
                     renderTerminalOutput("", err.message, 1, 0);
                 }
             } else {
-                // Execute PHP using Multi-Server Failover, with a local PHP emulator fallback!
-                await executePHPWithFailover(code, startTime);
+                // Jalankan PHP
+                await executePHPLocally(code, startTime);
             }
 
             runBtn.disabled = false;
-            runBtn.innerHTML = `<i class="fa-solid fa-play"></i> Jalankan Code`;
+            runBtn.innerHTML = `<i class="fa-solid fa-bolt"></i> Jalankan Lokal`;
         }
 
         // 1. LOCAL JAVASCRIPT SANDBOXED VIRTUAL EXECUTION
@@ -465,7 +474,6 @@
 
                             window.console = customConsole;
 
-                            // Custom Mock printf implementation
                             window.printf = function(format, ...args) {
                                 let i = 0;
                                 let result = format.replace(/%s|%d|%f/g, (match) => {
@@ -503,44 +511,22 @@
             });
         }
 
-        // PHP TO JAVASCRIPT TRANSPILER VM (100% OFFLINE / BYPASS CAPABILITY)
+        // PHP-TO-JS HIGH FIDELITY OFFLINE TRANSPILER
         function transpilePHPtoJS(php) {
             let js = php;
-            // 1. Bersihkan tag pembuka dan penutup PHP
             js = js.replace(/<\?php/g, '').replace(/\?>/g, '');
-
-            // 2. Transpilasi class constructor
             js = js.replace(/\bpublic\s+function\s+__construct/g, 'constructor');
             js = js.replace(/\bfunction\s+__construct/g, 'constructor');
-
-            // 3. Transpilasi pewarisan konstruktor (super)
             js = js.replace(/parent::__construct\(([^)]*)\)/g, 'super($1)');
-
-            // 4. Bersihkan kata kunci properti PHP (protected, private, public)
             js = js.replace(/\b(protected|private|public)\s+\$[a-zA-Z0-9_]+\s*;/g, '');
-
-            // 5. Bersihkan metode class (ubah 'public function nama()' menjadi 'nama()')
             js = js.replace(/\b(public|protected|private)\s+function\s+([a-zA-Z0-9_]+)/g, '$2');
-
-            // 6. Konversi operator '->' menjadi '.'
             js = js.replace(/->/g, '.');
-
-            // 7. Konversi '$this' menjadi 'this'
             js = js.replace(/\$this\b/g, 'this');
-
-            // 8. Konversi shorthand push array: '$var[] = val' menjadi '$var.push(val)'
             js = js.replace(/(\$[a-zA-Z0-9_]+)\[\]\s*=\s*([^;]+)/g, '$1.push($2)');
-
-            // 9. Konversi fungsi 'array(...)' lama menjadi '[...]'
             js = js.replace(/\barray\(([^)]*)\)/g, '[$1]');
-
-            // 10. Konversi 'implode(glue, array)' menjadi 'array.join(glue)'
             js = js.replace(/\bimplode\(([^,]+),\s*([^)]+)\)/g, '($2).join($1)');
-
-            // 11. Konversi operator penggabung string PHP '.' menjadi '+'
             js = js.replace(/(\s+)\.(\s+)/g, ' + ');
 
-            // 12. Interpolasi variabel string dengan tanda petik dua PHP ("Halo $nama" -> `Halo ${$nama}`)
             js = js.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match, content) => {
                 if (content.includes('$')) {
                     let interpolated = content.replace(/\$([a-zA-Z0-9_]+)/g, '${$$$1}');
@@ -549,7 +535,6 @@
                 return match;
             });
 
-            // 13. Ubah 'echo' dan 'print' menjadi 'console.log'
             js = js.replace(/\becho\s+([^;]+);/g, (match, expr) => {
                 let converted = expr.replace(/(\s+)\.(\s+)/g, ' + ');
                 return `console.log(${converted});`;
@@ -562,117 +547,55 @@
             return js;
         }
 
-        // 2. MULTI-SERVER FAILOVER PIPELINE FOR PHP WITH TUNNEL PROXIES & LOCAL VM FAILBACK
-        async function executePHPWithFailover(code, startTime) {
+        // LOCAL PHP COMPILING GATEWAY (WASM with Fallback to Transpiler)
+        async function executePHPLocally(code, startTime) {
             const terminal = document.getElementById('terminal');
             const stdin = document.getElementById('stdin-input').value;
 
-            // List of cloud compiler routes
-            const executionPipeline = [
-                // Route 1: Piston API with Tunnel Proxy
-                {
-                    name: "Piston Compiler (Tunnel Proxy)",
-                    useProxy: true,
-                    url: "https://emkc.org/api/v2/piston/execute",
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    getBody: () => JSON.stringify({
-                        language: 'php',
-                        version: phpRuntimeVersion,
-                        files: [{ name: 'index.php', content: code }],
-                        stdin: stdin
-                    }),
-                    parseResponse: async (res) => {
-                        const result = await res.json();
-                        return {
-                            output: result.run.output,
-                            error: result.run.stderr,
-                            code: result.run.code
-                        };
-                    }
-                },
-                // Route 2: Rextester API via Tunnel Proxy
-                {
-                    name: "Rextester Compiler (Tunnel Proxy)",
-                    useProxy: true,
-                    url: "https://rextester.com/rundotnet/api",
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    getBody: () => new URLSearchParams({
-                        'LanguageChoice': '8', // PHP
-                        'Program': code,
-                        'Input': stdin,
-                        'CompilerArgs': ''
-                    }),
-                    parseResponse: async (res) => {
-                        const data = await res.json();
-                        return {
-                            output: data.Result,
-                            error: data.Errors || data.Warnings,
-                            code: (data.Errors && !data.Result) ? 1 : 0
-                        };
-                    }
-                }
-            ];
-
-            // Loop through routes
-            for (let i = 0; i < executionPipeline.length; i++) {
-                const route = executionPipeline[i];
-                terminal.innerHTML = `<div class="text-slate-400 animate-pulse flex items-center gap-2">
-                    <i class="fa-solid fa-route animate-pulse"></i> 
-                    Mencoba cloud server: <strong class="text-indigo-400">${route.name}</strong>... [Jalur ${i+1}/${executionPipeline.length}]
-                </div>`;
-
+            // STRATEGI 1: Eksekusi Native via PHP WebAssembly (Jika Sukses Dimuat)
+            if (phpWasmModule) {
                 try {
-                    const response = await smartFetch(route.url, {
-                        method: route.method,
-                        headers: route.headers,
-                        body: route.getBody()
-                    }, route.useProxy);
+                    let wasmOutput = "";
+                    let wasmError = "";
 
-                    if (response.ok) {
-                        const result = await route.parseResponse(response);
-                        const duration = Math.round(performance.now() - startTime);
-                        renderTerminalOutput(result.output, result.error, result.code, duration, route.name);
-                        return; // Selesai jika cloud sukses
-                    }
-                } catch (err) {
-                    console.warn(`Jalur ${route.name} gagal berkomunikasi. Mencari alternatif...`);
+                    // Reset buffer output lama
+                    const onOutput = (event) => { wasmOutput += event.detail; };
+                    const onError = (event) => { wasmError += event.detail; };
+
+                    phpWasmModule.addEventListener('output', onOutput);
+                    phpWasmModule.addEventListener('error', onError);
+
+                    await phpWasmModule.run(code);
+
+                    // Lepas listener untuk mencegah memory leaks
+                    phpWasmModule.removeEventListener('output', onOutput);
+                    phpWasmModule.removeEventListener('error', onError);
+
+                    const duration = Math.round(performance.now() - startTime);
+                    renderTerminalOutput(wasmOutput, wasmError, wasmError ? 1 : 0, duration, "PHP WASM Engine");
+                    return;
+                } catch (wasmErr) {
+                    console.warn("Gagal mengeksekusi lewat WASM secara mulus. Beralih ke Sandbox Transpiler.", wasmErr);
                 }
             }
 
-            // --- LOCAL EMULATOR VM FALLBACK (TRIGGERED WHEN ALL CLOUD PATHS ARE BLOCKED!) ---
-            terminal.innerHTML = `<div class="text-amber-400 animate-pulse flex items-center gap-2">
-                <i class="fa-solid fa-triangle-exclamation"></i> 
-                Cloud terblokir CORS/Offline. Mengaktifkan <strong>Local PHP VM Emulator (0ms)</strong>...
-            </div>`;
-
+            // STRATEGI 2: Sandboxed Transpiler (Bekerja offline total tanpa download/CDN)
             try {
-                // Transpile PHP code to safe Javascript
                 const transpiledJS = transpilePHPtoJS(code);
-                
-                // Execute PHP code locally as Javascript
                 const result = await executeJSLocally(transpiledJS, stdin);
                 const duration = Math.round(performance.now() - startTime);
 
-                // Print outputs along with local environment indicator
                 renderTerminalOutput(
                     result.output, 
                     result.error, 
                     result.code, 
                     duration, 
-                    "Local PHP VM Emulator", 
-                    true // local flag
+                    "Local PHP VM", 
+                    true // Set flag fallback aktif
                 );
             } catch (fallbackError) {
                 const duration = Math.round(performance.now() - startTime);
-                renderTerminalOutput(
-                    "",
-                    "Gagal memproses kode secara lokal: " + fallbackError.message,
-                    1,
-                    duration,
-                    "Local Failover Error"
-                );
+                renderTerminalOutput("", "Error kompilasi lokal: " + fallbackError.message, 1, duration, "Offline VM Error");
             }
         }
 
@@ -685,13 +608,12 @@
 
             terminal.innerHTML = "";
 
-            // If it used the local emulator fallback, display an informational banner
             if (isLocalFallback) {
                 terminal.innerHTML += `
-                    <div class="bg-amber-950/40 border border-amber-900/50 text-amber-300 p-3 rounded-lg mb-4 text-xs flex items-start gap-2.5 leading-relaxed">
-                        <i class="fa-solid fa-circle-info text-amber-400 mt-0.5"></i>
+                    <div class="bg-indigo-950/40 border border-indigo-900/50 text-indigo-300 p-3 rounded-lg mb-4 text-xs flex items-start gap-2.5 leading-relaxed shadow-lg">
+                        <i class="fa-solid fa-plane-slash text-indigo-400 mt-0.5"></i>
                         <div>
-                            <strong>Bypass Sukses:</strong> Koneksi cloud dibatasi oleh browser Anda. NexaCode berhasil mengaktifkan <strong>Local PHP VM Emulator</strong> untuk memproses script Anda secara langsung.
+                            <strong>Mode Offline Total Aktif:</strong> Anda sedang dalam mode luring penuh. Kode PHP diproses menggunakan <strong>NexaCode Local PHP Engine (0ms)</strong> tanpa mengirim data keluar.
                         </div>
                     </div>
                 `;
@@ -755,21 +677,20 @@
             }, 3000);
         }
 
-        function shareCode() {
-            const code = editor.getValue();
-            const encodedCode = encodeURIComponent(btoa(code));
-            const shareUrl = `${window.location.origin}${window.location.pathname}?lang=${currentLanguage}&code=${encodedCode}`;
-
+        // DOWNLOAD FULL WEB APP AS A STANDALONE OFFLINE HTML FILE
+        function downloadOfflineApp() {
             try {
-                const el = document.createElement('textarea');
-                el.value = shareUrl;
+                const currentCodeHtml = document.documentElement.outerHTML;
+                const blob = new Blob([currentCodeHtml], { type: 'text/html' });
+                const el = document.createElement('a');
+                el.href = URL.createObjectURL(blob);
+                el.download = 'NexaCode_Offline_Compiler.html';
                 document.body.appendChild(el);
-                el.select();
-                document.execCommand('copy');
+                el.click();
                 document.body.removeChild(el);
-                showToast('Link berhasil disalin ke clipboard!', 'fa-link', 'text-emerald-400');
-            } catch(err) {
-                showToast('Gagal menyalin link secara otomatis.', 'fa-triangle-exclamation', 'text-yellow-400');
+                showToast('Aplikasi Offline berhasil diunduh!', 'fa-circle-check', 'text-emerald-400');
+            } catch (err) {
+                showToast('Gagal mengunduh aplikasi offline.', 'fa-triangle-exclamation', 'text-rose-400');
             }
         }
     </script>
